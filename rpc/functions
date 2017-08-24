@@ -1,28 +1,28 @@
-function getenv string
-parameter name string
+function getenv pchar
+parameter name cstring
 
 function closedir int
-parameter dirp dir dir pvoid
+parameter dirp dir
 
-function dirfd int
+function dirfd fd
 parameter dirp dir
 
 function fclose int
-parameter stream file file pvoid
+parameter stream file
 
 function fdopendir dir
-parameter fd int
+parameter fd fd
 
-function fileno int
+function fileno fd
 parameter stream file
 
 function fopen file
-parameter path cstring string
-parameter mode cstring string
+parameter path cstring
+parameter mode cstring
 
 function fprintf int
 parameter stream file
-parameter format cstring string
+parameter format cstring
 variadic real_vfprintf
 
 function free void
@@ -30,8 +30,8 @@ parameter ptr pvoid
 
 function getpid pid_t
 
-function _IO_putc int
-parameter c int char
+function _IO_putc char
+parameter c char
 parameter stream file
 
 function malloc pvoid
@@ -42,103 +42,111 @@ parameter ptr pvoid
 parameter size size_t
 
 function opendir dir
-parameter dir cstring string
+parameter name cstring
 
-function putc int
-parameter c int char
+function putc char
+parameter c char
 parameter stream file
 
 function readdir_r int
 parameter dirp dir
-parameter entry dirent pvoid buffer
-parameter result pdirent pvoid
+parameter entry dirent
+parameter result pdirent
 
 function read ssize_t
-parameter fd int
-parameter buf pvoid pvoid buffer
+parameter fd fd
+parameter buf pvoid
 parameter count size_t
 
 function sprintf int
-parameter str string pvoid string
-parameter format cstring string
+parameter str string
+parameter format cstring
 variadic real_vsprintf
 
 function vsprintf int
-parameter str string pvoid string
-parameter format cstring string
-parameter ap va_list pvoid
+parameter str string
+parameter format cstring
+parameter ap va_list
 
 function sscanf int
-parameter str cstring string
-parameter format cstring string
+parameter str cstring
+parameter format cstring
 variadic real_vsscanf
 
 function strcat string
 parameter dest string
-parameter src cstring string
+parameter src cstring
 
 function strchr string
-parameter s cstring string
-parameter c int char
+parameter s cstring
+parameter c char
 
 function strstr string
-parameter haystack cstring string
-parameter needle cstring string
+parameter haystack cstring
+parameter needle cstring
 
 function strcmp int
-parameter s1 cstring string
-parameter s2 cstring string
+parameter s1 cstring
+parameter s2 cstring
 
 function strcpy string
-parameter dest string pvoid string
-parameter src cstring string
+parameter dest string
+parameter src cstring
 
-function strncpy string buffer
-parameter dest string pvoid buffer
-parameter src cstring buffer
+function strncpy string
+parameter dest string
+parameter src cstring
 parameter n size_t
 
 function strlen size_t
-parameter s cstring string
+parameter s cstring
 
-function tolower int char
-parameter c int char
+function tolower char
+parameter c char
 
-function toupper int char
-parameter c int char
+function toupper char
+parameter c char
 
 function vfprintf int
 parameter stream file
-parameter format cstring string
-parameter ap va_list pvoid
+parameter format cstring
+parameter ap va_list
 
 function vsnprintf int
-parameter str string pvoid string
+parameter str string
 parameter size size_t
-parameter format cstring string
-parameter ap va_list pvoid
+parameter format cstring
+parameter ap va_list
 
 function vsscanf int
-parameter str cstring string
-parameter format cstring string
-parameter ap va_list pvoid
+parameter str cstring
+parameter format cstring
+parameter ap va_list
 
 function write ssize_t
-parameter fd int
-parameter buf pcvoid buffer
+parameter fd fd
+parameter buf pcvoid
 parameter count size_t
 
 function memmove pvoid
-parameter dest pvoid pvoid buffer
-parameter src pcvoid buffer
+parameter dest pvoid
+parameter src pcvoid
 parameter n size_t
 
 function memcpy pvoid
-parameter dest pvoid pvoid buffer
-parameter src pcvoid buffer
+parameter dest pvoid
+parameter src pcvoid
 parameter n size_t
 
 function memset pvoid
 parameter s pvoid
-parameter c int char
+parameter c char
 parameter n size_t
+
+function getline ssize_t
+parameter lineptr pstring
+parameter n psize_t
+parameter stream file
+
+function close int
+parameter fd fd
