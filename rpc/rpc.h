@@ -17,7 +17,7 @@ enum rpc_msg_type {
 	RPC_MSG_SET_RESULT,
 	RPC_MSG_SET_PARAMETERS,
 	RPC_MSG_GET_STRING,
-	RPC_MSG_MISC
+	RPC_MSG_BACKTRACE
 };
 
 struct rpc_control_header {

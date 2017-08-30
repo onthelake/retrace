@@ -223,6 +223,24 @@ handle_postcall(struct retrace_rpc_endpoint *ep, void *buf)
 	free(ctx);
 }
 
+static int
+recv_string(int fd, char *buf, size_t len)
+{
+	off_t offset = 0;
+	ssize_t n;
+
+	while (offset < len) {
+		n = recv(fd, buf + offset, len - offset, 0);
+		if (n <= 0)
+			break;
+		offset += n;
+		if (buf[offset - 1] == '\0')
+			return offset;
+	}
+
+	return -1;
+}
+
 void
 retrace_trace(struct retrace_handle *handle)
 {
@@ -273,6 +291,17 @@ retrace_trace(struct retrace_handle *handle)
 	}
 }
 
+int
+rpc_backtrace(int fd, char *buffer, size_t len)
+{
+	rpc_send(fd, RPC_MSG_BACKTRACE, NULL, 0);
+
+	if (recv_string(fd, buffer, len))
+		return 1;
+
+	return 0;
+}
+
 retrace_precall_handler_t
 retrace_get_precall_handler(enum rpc_function_id id)
 {
@@ -295,6 +324,22 @@ void
 retrace_set_postcall_handler(enum rpc_function_id id, retrace_postcall_handler_t fn)
 {
 	g_postcall_handlers[id] = fn;
+}
+
+void
+trace_string(int fd, const char *s)
+{
+	char buf[RPC_MSG_LEN_MAX];
+
+	if (s == NULL) {
+		printf("%p", s);
+		return;
+	}
+
+	rpc_send(fd, RPC_MSG_GET_STRING, &s, sizeof(s));
+
+	if (recv_string(fd, buf, RPC_MSG_LEN_MAX))
+		printf("\"%s\"", buf);
 }
 
 void *

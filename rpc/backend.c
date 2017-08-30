@@ -31,6 +31,7 @@
 #include <sys/socket.h>
 #include <pthread.h>
 #include <errno.h>
+#include <execinfo.h>
 
 #include "shim.h"
 #include "rpc.h"
@@ -135,7 +136,7 @@ new_rpc_endpoint()
 }
 
 static int
-rpc_sockfd()
+get_sockfd()
 {
 	/*
 	 * we only need an fd per thread
@@ -158,30 +159,70 @@ rpc_sockfd()
 }
 
 static void
-rpc_unsockfd()
+set_sockfd(long int fd)
 {
-	pthread_setspecific(g_fdkey, (void *)-1);
+	pthread_setspecific(g_fdkey, (void *)fd);
+}
+
+static int
+send_string(const char *s, void *buf)
+{
+	int fd, i;
+
+	fd = get_sockfd();
+	if (fd == -1)
+		return 0;
+
+	for (i = 0; i < RPC_MSG_LEN_MAX && s[i] != '\0'; ++i)
+		((char *)buf)[i] = s[i];
+
+	if (i < RPC_MSG_LEN_MAX)
+		((char *)buf)[i++] = '\0';
+
+	if (send(fd, buf, i, 0) != i)
+		return 0;
+
+	return 1;
+}
+
+static int
+send_backtrace()
+{
+	void *addresses[10];
+	int frames;
+	int fd;
+	char zero = '\0';
+
+	fd = get_sockfd();
+	if (fd == -1)
+		return 0;
+
+	set_sockfd(-1);
+	frames = backtrace(addresses, 10);
+	backtrace_symbols_fd(addresses, frames, fd);
+	send(fd, &zero, 1, 0);
+	set_sockfd(fd);
+
+	return 1;
 }
 
 int
 rpc_handle_message(enum rpc_msg_type msg_type, void *buf, int *done)
 {
-	int i;
-	char *p;
-
 	switch (msg_type) {
 	case RPC_MSG_DONE:
 		*done = 1;
 		break;
 	case RPC_MSG_GET_STRING:
-		p = *(char **)buf;
-		for (i = 0; i < RPC_MSG_LEN_MAX && p[i] != '\0'; ++i)
-			((char *)buf)[i] = p[i];
-		if (!rpc_backend_send(RPC_MSG_MISC, buf, i))
+		if (!send_string(*(char **)buf, buf))
+			return 0;
+		break;
+	case RPC_MSG_BACKTRACE:
+		if (!send_backtrace())
 			return 0;
 		break;
 	default:
-		error(1, 0, "Unknown RPC message type");
+		error(1, 0, "Unknown RPC message type (%d)", msg_type);
 		break;
 	}
 	return 1;
@@ -193,7 +234,7 @@ rpc_backend_recv(enum rpc_msg_type *msg_type, void *buf)
 	int fd;
 	ssize_t c = 0;
 
-	fd = rpc_sockfd();
+	fd = get_sockfd();
 
 	if (fd != -1) {
 		c = rpc_recv(fd, msg_type, buf);
@@ -201,7 +242,7 @@ rpc_backend_recv(enum rpc_msg_type *msg_type, void *buf)
 			real_close(fd);
 
 		if (c <= 0)
-			rpc_unsockfd();
+			set_sockfd(-1);
 	}
 	return (c > 0);
 }
@@ -212,7 +253,7 @@ rpc_backend_send(enum rpc_msg_type msg_type, const void *buf, size_t len)
 	int fd;
 	ssize_t c = 0;
 
-	fd = rpc_sockfd();
+	fd = get_sockfd();
 
 	if (fd != -1) {
 		c = rpc_send(fd, msg_type, buf, len);
@@ -220,7 +261,7 @@ rpc_backend_send(enum rpc_msg_type msg_type, const void *buf, size_t len)
 			real_close(fd);
 
 		if (c <= 0)
-			rpc_unsockfd();
+			set_sockfd(-1);
 	}
 	return (c > 0);
 }

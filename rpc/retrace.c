@@ -27,12 +27,33 @@
 
 #include "frontend.h"
 
+#include <stdlib.h>
+#include <string.h>
+int
+dirfd_precall_handler(struct retrace_rpc_endpoint *ep, void *buf, void **context)
+{
+	struct rpc_dirfd_params *params;
+	char bt[4096];
+	ssize_t n;
+
+	params = malloc(sizeof(struct rpc_dirfd_params));
+	*params = *(struct rpc_dirfd_params *)buf;
+	*context = params;
+
+	n = rpc_backtrace(ep->fd, bt, sizeof(bt));
+	if (n > 0)
+		printf(bt);
+
+	return 1;
+}
+
 int main(int argc, char **argv)
 {
 	struct retrace_handle *trace_handle;
 
 	trace_handle = retrace_start(&argv[1]);
 
+	retrace_set_precall_handler(RPC_dirfd, dirfd_precall_handler);
 	retrace_trace(trace_handle);
 
 	retrace_close(trace_handle);

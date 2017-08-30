@@ -7,26 +7,25 @@
 #include "rpc.h"
 #include "shim.h"
 
-#define TRACE_char(c)	printf("'%c'", (c))
-#define TRACE_cstring(p)	TRACE_pvoid(p)
-#define TRACE_dir(p)	TRACE_pvoid(p)
-#define TRACE_dirent(p)	TRACE_pvoid(p)
-#define TRACE_file(p)	TRACE_pvoid(p)
-#define TRACE_fd(i)	TRACE_int(i)
-#define TRACE_int(i)	printf("%d", (i))
-#define TRACE_long(i)	printf("%ld", (i))
-#define TRACE_pid_t(i)	TRACE_int(i)
-#define TRACE_pchar(p)	TRACE_pvoid(p)
-#define TRACE_pcvoid(p)	printf("%p", (p))
-#define TRACE_pdirent(p)	TRACE_pvoid(p)
-#define TRACE_psize_t(p)	TRACE_pvoid(p)
-#define TRACE_pstring(p)	TRACE_pvoid(p)
-#define TRACE_pvoid(p)	printf("%p", (p))
-#define TRACE_size_t(i)	TRACE_ulong(i)
-#define TRACE_ssize_t(i)	TRACE_long(i)
-#define TRACE_string(p)	TRACE_pvoid(p)
-#define TRACE_ulong(i)	printf("%lu", (i))
-#define TRACE_va_list(ap)	printf("ap")
+#define TRACE_char(ep, c)	printf("'%c'", (c))
+#define TRACE_cstring(ep, p)	trace_string(ep->fd, p)
+#define TRACE_dir(ep, p)	TRACE_pvoid(ep, p)
+#define TRACE_dirent(ep, p)	TRACE_pvoid(ep, p)
+#define TRACE_file(ep, p)	TRACE_pvoid(ep, p)
+#define TRACE_fd(ep, i)	TRACE_int(ep, i)
+#define TRACE_int(ep, i)	printf("%d", (i))
+#define TRACE_long(ep, i)	printf("%ld", (i))
+#define TRACE_pid_t(ep, i)	TRACE_int(ep, i)
+#define TRACE_pcvoid(ep, p)	printf("%p", (p))
+#define TRACE_pdirent(ep, p)	TRACE_pvoid(ep, p)
+#define TRACE_psize_t(ep, p)	TRACE_pvoid(ep, p)
+#define TRACE_pstring(ep, p)	TRACE_pvoid(ep, p)
+#define TRACE_pvoid(ep, p)	printf("%p", (p))
+#define TRACE_size_t(ep, i)	TRACE_ulong(ep, i)
+#define TRACE_ssize_t(ep, i)	TRACE_long(ep, i)
+#define TRACE_string(ep, p)	trace_string(ep->fd, p)
+#define TRACE_ulong(ep, i)	printf("%lu", (i))
+#define TRACE_va_list(ep, ap)	printf("ap")
 
 struct rpc_call_context {
 	SLIST_ENTRY(rpc_call_context) next;
@@ -78,4 +77,7 @@ void retrace_set_precall_handler(enum rpc_function_id,
 	retrace_precall_handler_t handler);
 
 void *trace_buffer(void *buffer, size_t length);
+void trace_string(int fd, const char *s);
+
+int rpc_backtrace(int fd, char *buf, size_t len);
 #endif

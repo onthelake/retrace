@@ -9,7 +9,9 @@ int
 default_[[name]]_precall_handler(struct retrace_rpc_endpoint *ep, void *buf, void **context)
 {
 [[#has_parameters]]
-	struct rpc_[[name]]_params *params = malloc(sizeof(struct rpc_[[name]]_params));
+	struct rpc_[[name]]_params *params;
+
+	params = malloc(sizeof(struct rpc_[[name]]_params));
 	*params = *(struct rpc_[[name]]_params *)buf;
 	*context = params;
 [[/has_parameters]]
@@ -29,7 +31,7 @@ default_[[name]]_postcall_handler(struct retrace_rpc_endpoint *ep, void *buf, vo
 
 	printf("(%d:%d %d)%.*s[[name]](", ep->pid, ep->thread_num, ep->call_num, ep->call_depth, "\t\t\t\t\t");
 [[#params]]
-	TRACE_[[type]](params->[[name]]);
+	TRACE_[[type]](ep, params->[[name]]);
 [[^last]]
 	printf(", ");
 [[/last]]
@@ -37,7 +39,7 @@ default_[[name]]_postcall_handler(struct retrace_rpc_endpoint *ep, void *buf, vo
 	printf(")");
 [[#result]]
 	printf(" = ");
-	TRACE_[[type]](result);
+	TRACE_[[type]](ep, result);
 [[/result]]
 	printf("\n");
 	return 0;

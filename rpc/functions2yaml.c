@@ -44,7 +44,6 @@ struct type {
 	{"fd",		"int ",			NULL		},
 	{"file",	"FILE *",		NULL		},
 	{"int",		"int ",			NULL		},
-	{"pchar",	"char *",		NULL		},
 	{"pcvoid",	"const void *",		NULL		},
 	{"pdirent",	"struct dirent **",	NULL		},
 	{"pid_t",	"pid_t ",		NULL		},

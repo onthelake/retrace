@@ -1,4 +1,4 @@
-function getenv pchar
+function getenv string
 parameter name cstring
 
 function closedir int
