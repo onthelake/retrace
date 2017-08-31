@@ -4,9 +4,11 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-int rpc_handle_message(enum rpc_msg_type msg_type, void *buf, int *done);
-int rpc_backend_recv(enum rpc_msg_type *msg_type, void *buf);
-int rpc_backend_send(enum rpc_msg_type msg_type, const void *buf, size_t len);
+int rpc_get_sockfd(void);
+void rpc_set_sockfd(long int fd);
+int rpc_handle_message(int fd, enum rpc_msg_type msg_type, void *buf);
+int rpc_backend_recv(int fd, enum rpc_msg_type *msg_type, void *buf);
+int rpc_backend_send(int fd, enum rpc_msg_type msg_type, const void *buf, size_t len);
 
 #endif
 

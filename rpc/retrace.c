@@ -29,31 +29,88 @@
 
 #include <stdlib.h>
 #include <string.h>
-int
-dirfd_precall_handler(struct retrace_rpc_endpoint *ep, void *buf, void **context)
+#include <getopt.h>
+
+#define OPT_FUNCS '0'
+#define OPT_BTFUNCS '1'
+#define OPT_BTDEPTH '2'
+
+static struct option options[] = {
+	{"functions", required_argument, 0, OPT_FUNCS},
+	{"backtrace-functions", required_argument, 0, OPT_BTFUNCS},
+	{"backtrace-depth", required_argument, 0, OPT_BTDEPTH},
+	{NULL, 0, 0, 0}
+};
+
+static void set_trace_flags(int *flags, int setflag, char *funcs)
 {
-	struct rpc_dirfd_params *params;
-	char bt[4096];
-	ssize_t n;
+	char *p;
+	enum rpc_function_id id;
 
-	params = malloc(sizeof(struct rpc_dirfd_params));
-	*params = *(struct rpc_dirfd_params *)buf;
-	*context = params;
+	p = strdup(funcs);
+	if (p == NULL)
+		return;
 
-	n = rpc_backtrace(ep->fd, bt, sizeof(bt));
-	if (n > 0)
-		printf(bt);
+	for (p = strtok(p, ","); p; p = strtok(NULL, ",")) {
+		id = function_name_to_id(p);
+		if (id != -1)
+			flags[id] |= setflag;
+	}
 
-	return 1;
+	free(p);
 }
 
 int main(int argc, char **argv)
 {
 	struct retrace_handle *trace_handle;
+	struct backtrace_info backtrace_info;
+	int i, c, opt_funcs = 0,
+	    trace_flags[RPC_FUNCTION_COUNT];
+	retrace_precall_handler_t pre[RPC_FUNCTION_COUNT];
+	retrace_postcall_handler_t post[RPC_FUNCTION_COUNT];
 
-	trace_handle = retrace_start(&argv[1]);
+	memset(trace_flags, 0, sizeof(trace_flags));
+	memset(&backtrace_info, 0, sizeof(backtrace_info));
 
-	retrace_set_precall_handler(RPC_dirfd, dirfd_precall_handler);
+	backtrace_info.depth = 10;
+
+	while (1) {
+		c = getopt_long(argc, argv, "+", options, NULL);
+
+		if (c == -1)
+			break;
+
+		switch (c) {
+		case OPT_FUNCS:
+			opt_funcs = 1;
+			set_trace_flags(trace_flags, RETRACE_TRACE, optarg);
+			break;
+		case OPT_BTFUNCS:
+			opt_funcs = 1;
+			set_trace_flags(trace_flags, RETRACE_TRACE, optarg);
+			set_trace_flags(backtrace_info.flags, 0x01, optarg);
+			break;
+		case OPT_BTDEPTH:
+			backtrace_info.depth = atoi(optarg);
+			break;
+		default:
+			fprintf(stderr, "got %c from optarg()", c);
+			break;
+		}
+	}
+
+	if (!opt_funcs)
+		for (i = 0; i < RPC_FUNCTION_COUNT; i++)
+			trace_flags[i] |= RETRACE_TRACE;
+
+	trace_handle = retrace_start(&argv[optind], trace_flags);
+
+	get_handlers(pre, post);
+
+	retrace_set_handlers(trace_handle, pre, post);
+
+	retrace_set_user_data(trace_handle, &backtrace_info);
+
 	retrace_trace(trace_handle);
 
 	retrace_close(trace_handle);

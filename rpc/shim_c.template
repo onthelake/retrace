@@ -19,6 +19,8 @@ struct interpose {
 #endif
 [[#functions]]
 
+int trace_functions[RPC_FUNCTION_COUNT];
+
 #ifdef __APPLE__
 [[ctype]]retrace_impl_[[name]]([[#params]][[ctype]][[name]][[^last]], [[/last]][[/params]][[#variadic]], ...[[/variadic]])
 #else
@@ -26,7 +28,7 @@ struct interpose {
 #endif
 {
 	enum rpc_msg_type _msg_type;
-	int _rpc_fail = 0, _complete = 0, _postcall = 0;
+	int _postcall = 0, _fd;
 	char _buf[RPC_MSG_LEN_MAX];
 	struct rpc_[[name]]_params _params = {RPC_[[name]][[#params]], [[name]][[/params]]};
 [[#has_parameters]]
@@ -39,29 +41,28 @@ struct interpose {
 	[[ctype]]_result;
 [[/result]]
 
-	if (!rpc_backend_send(RPC_MSG_CALL_INIT, &_params, sizeof(_params)))
-		_rpc_fail = 1;
+	_fd = rpc_get_sockfd();
 
-	while (!_complete && !_rpc_fail) {
-		if (!rpc_backend_recv(&_msg_type, _buf)) {
-			_rpc_fail = 1;
-			break;
-		}
+	if (!trace_functions[RPC_[[name]]])
+		_fd = -1;
 
-		switch (_msg_type) {
+	if (!rpc_backend_send(_fd, RPC_MSG_CALL_INIT, &_params, sizeof(_params)))
+		_fd = -1;
+
+	while (rpc_backend_recv(_fd, &_msg_type, _buf)) {
+		if (_msg_type == RPC_MSG_DONE) {
+			return[[#result]] _result[[/result]];
 [[#result]]
-		case RPC_MSG_SET_RESULT:
+		} else if (_msg_type == RPC_MSG_SET_RESULT) {
 			_result = *([[ctype]]*)_buf;
-			break;
 [[/result]]
 [[#has_parameters]]
-		case RPC_MSG_SET_PARAMETERS:
+		} else if (_msg_type == RPC_MSG_SET_PARAMETERS) {
 [[#params]]
 			[[name]] = _buf_params->[[name]];
 [[/params]]
-			break;
 [[/has_parameters]]
-		case RPC_MSG_DO_CALL:
+		} else if (_msg_type == RPC_MSG_DO_CALL) {
 [[#variadic]]
 			va_start(ap, [[last_param]]);
 			[[#result]]_result = [[/result]][[variadic]]([[#params]][[name]], [[/params]]ap);
@@ -71,26 +72,20 @@ struct interpose {
 			[[#result]]_result = [[/result]]real_[[name]]([[#params]][[name]][[^last]], [[/last]][[/params]]);
 [[/variadic]]
 			_postcall = 1;
-			if (!rpc_backend_send(RPC_MSG_CALL_RESULT, [[#result]]&_result, sizeof(_result)[[/result]][[^result]]NULL, 0[[/result]]))
-				_rpc_fail = 1;
+			if (!rpc_backend_send(_fd, RPC_MSG_CALL_RESULT, [[#result]]&_result, sizeof(_result)[[/result]][[^result]]NULL, 0[[/result]]))
+				break;
+		} else if (!rpc_handle_message(_fd, _msg_type, _buf))
 			break;
-		default:
-			if (!rpc_handle_message(_msg_type, _buf, &_complete))
-				_rpc_fail = 1;
-			break;
-		}
 	}
-	if (_rpc_fail && !_postcall) {
-		if (!_postcall) {
+	if (!_postcall) {
 [[#variadic]]
-			va_start(ap, [[last_param]]);
-			[[#result]]_result = [[/result]][[variadic]]([[#params]][[name]], [[/params]]ap);
-			va_end(ap);
+		va_start(ap, [[last_param]]);
+		[[#result]]_result = [[/result]][[variadic]]([[#params]][[name]], [[/params]]ap);
+		va_end(ap);
 [[/variadic]]
 [[^variadic]]
-			[[#result]]_result = [[/result]]real_[[name]]([[#params]][[name]][[^last]], [[/last]][[/params]]);
+		[[#result]]_result = [[/result]]real_[[name]]([[#params]][[name]][[^last]], [[/last]][[/params]]);
 [[/variadic]]
-		}
 	}
 	return [[#result]]_result[[/result]];
 }

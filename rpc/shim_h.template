@@ -12,6 +12,7 @@ enum rpc_function_id {
 	[[#functions]]
 	RPC_[[name]],
 	[[/functions]]
+	RPC_FUNCTION_COUNT
 };
 
 [[#functions]]
@@ -28,5 +29,7 @@ struct rpc_[[name]]_params {
 typedef [[ctype]](*rtr_[[name]]_t)([[#params]][[ctype]][[name]][[^last]], [[/last]][[/params]][[#variadic]], ...[[/variadic]]);
 extern rtr_[[name]]_t real_[[name]];
 [[/functions]]
+
+extern int trace_functions[RPC_FUNCTION_COUNT];
 
 #endif

@@ -1,5 +1,6 @@
 {{=[[ ]]=}}
 #include <stdlib.h>
+#include <string.h>
 #include "shim.h"
 #include "rpc.h"
 #include "frontend.h"
@@ -22,6 +23,8 @@ default_[[name]]_precall_handler(struct retrace_rpc_endpoint *ep, void *buf, voi
 int
 default_[[name]]_postcall_handler(struct retrace_rpc_endpoint *ep, void *buf, void *context)
 {
+	struct backtrace_info *backtrace_info = ep->handle->user_data;
+	char btbuffer[4096];
 [[#has_parameters]]
 	struct rpc_[[name]]_params *params = (struct rpc_[[name]]_params *)context;
 [[/has_parameters]]
@@ -42,18 +45,30 @@ default_[[name]]_postcall_handler(struct retrace_rpc_endpoint *ep, void *buf, vo
 	TRACE_[[type]](ep, result);
 [[/result]]
 	printf("\n");
+
+	if (backtrace_info->flags[RPC_[[name]]]) {
+		if (retrace_backtrace(ep->fd, backtrace_info->depth, btbuffer, sizeof(btbuffer)))
+			printf(btbuffer);
+	}
+
+	free(context);
 	return 0;
 }
 [[/functions]]
 
-retrace_precall_handler_t g_precall_handlers[] = {
+void get_handlers(retrace_precall_handler_t *pre, retrace_postcall_handler_t *post)
+{
 	[[#functions]]
-	default_[[name]]_precall_handler[[^last]],[[/last]]
+	pre[RPC_[[name]]] = default_[[name]]_precall_handler;
+	post[RPC_[[name]]] = default_[[name]]_postcall_handler;
 	[[/functions]]
 };
 
-retrace_postcall_handler_t g_postcall_handlers[] = {
+enum rpc_function_id
+function_name_to_id(const char *name) {
 	[[#functions]]
-	default_[[name]]_postcall_handler[[^last]],[[/last]]
+	if (!strcmp(name, "[[name]]"))
+		return RPC_[[name]];
 	[[/functions]]
-};
+	return -1;
+}

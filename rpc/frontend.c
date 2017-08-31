@@ -113,16 +113,17 @@ add_endpoint(struct retrace_handle *handle)
 
 	endpoint->thread_num = procinfo->next_thread_num++;
 	endpoint->call_num = 0;
+	endpoint->handle = handle;
 	SLIST_INSERT_HEAD(&handle->endpoints, endpoint, next);
 
 	return endpoint;
 }
 
 struct retrace_handle *
-retrace_start(char *const argv[])
+retrace_start(char *const argv[], const int *trace_flags)
 {
 	int sv[2];
-	char fd_str[16];
+	char fd_str[16], trace_funcs[RPC_FUNCTION_COUNT + 1];
 	pid_t pid;
 	struct retrace_handle *handle;
 
@@ -141,6 +142,12 @@ retrace_start(char *const argv[])
 		sprintf(fd_str, "%d", sv[1]);
 		setenv("RTR_SOCKFD", fd_str, 1);
 
+		for (int i = 0; i < RPC_FUNCTION_COUNT; i++)
+			trace_funcs[i] =
+			    trace_flags[i] & RETRACE_TRACE ? '1' : '0';
+		trace_funcs[RPC_FUNCTION_COUNT] = '\0';
+		setenv("RTR_FUNCTIONS", trace_funcs, 1);
+
 		execv(argv[0], argv);
 		error(1, 0, "Failed to exec (%s.)", strerror(errno));
 
@@ -158,6 +165,22 @@ retrace_start(char *const argv[])
 
 		return handle;
 	}
+}
+
+void
+retrace_set_handlers(struct retrace_handle *handle,
+	retrace_precall_handler_t *pre, retrace_postcall_handler_t *post)
+{
+	memcpy(handle->precall_handlers, pre,
+	    sizeof(handle->precall_handlers));
+	memcpy(handle->postcall_handlers, post,
+	    sizeof(handle->postcall_handlers));
+}
+
+void
+retrace_set_user_data(struct retrace_handle *handle, void *data)
+{
+	handle->user_data = data;
 }
 
 void
@@ -195,7 +218,7 @@ handle_precall(struct retrace_rpc_endpoint *ep, void *buf)
 
 	++ep->call_depth;
 	function_id = *(enum rpc_function_id *)buf;
-	if (g_precall_handlers[function_id](ep, buf, &context)) {
+	if (ep->handle->precall_handlers[function_id](ep, buf, &context)) {
 		ctx = malloc(sizeof(struct rpc_call_context));
 		ctx->function_id = function_id;
 		ctx->context = context;
@@ -216,11 +239,10 @@ handle_postcall(struct retrace_rpc_endpoint *ep, void *buf)
 	SLIST_REMOVE_HEAD(&ep->call_stack, next);
 
 	++ep->call_num;
-	g_postcall_handlers[ctx->function_id](ep, buf, ctx->context);
+	ep->handle->postcall_handlers[ctx->function_id](ep, buf, ctx->context);
 
 	rpc_send(ep->fd, RPC_MSG_DONE, NULL, 0);
 	--ep->call_depth;
-	free(ctx);
 }
 
 static int
@@ -292,38 +314,14 @@ retrace_trace(struct retrace_handle *handle)
 }
 
 int
-rpc_backtrace(int fd, char *buffer, size_t len)
+retrace_backtrace(int fd, int depth, char *buffer, size_t len)
 {
-	rpc_send(fd, RPC_MSG_BACKTRACE, NULL, 0);
+	rpc_send(fd, RPC_MSG_BACKTRACE, &depth, sizeof(depth));
 
 	if (recv_string(fd, buffer, len))
 		return 1;
 
 	return 0;
-}
-
-retrace_precall_handler_t
-retrace_get_precall_handler(enum rpc_function_id id)
-{
-	return g_precall_handlers[id];
-}
-
-retrace_postcall_handler_t
-retrace_get_postcall_handler(enum rpc_function_id id)
-{
-	return g_postcall_handlers[id];
-}
-
-void
-retrace_set_precall_handler(enum rpc_function_id id, retrace_precall_handler_t fn)
-{
-	g_precall_handlers[id] = fn;
-}
-
-void
-retrace_set_postcall_handler(enum rpc_function_id id, retrace_postcall_handler_t fn)
-{
-	g_postcall_handlers[id] = fn;
 }
 
 void
