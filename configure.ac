@@ -93,6 +93,16 @@ fi
 #if test "x$isfreebsd" = "xyes"; then
 #fi
 
+# OpenBSD specific configuration
+if test "x$isopenbsd" = "xyes"; then
+    AC_DEFINE([STAILQ_INIT], [SIMPLEQ_INIT], [Define to SIMPLEQ_ for OpenBSD])
+    AC_DEFINE([STAILQ_ENTRY], [SIMPLEQ_ENTRY], [Define to SIMPLEQ_ for OpenBSD])
+    AC_DEFINE([STAILQ_HEAD], [SIMPLEQ_HEAD], [Define to SIMPLEQ_ for OpenBSD])
+    AC_DEFINE([STAILQ_INSERT_TAIL], [SIMPLEQ_INSERT_TAIL], [Define to SIMPLEQ_ for OpenBSD])
+    AC_DEFINE([STAILQ_FIRST], [SIMPLEQ_FIRST], [Define to SIMPLEQ_ for OpenBSD])
+    AC_DEFINE([STAILQ_NEXT], [SIMPLEQ_NEXT], [Define to SIMPLEQ_ for OpenBSD])
+fi
+
 # Test for __atomic support
 AC_MSG_CHECKING([for gcc __atomic builtins])
 AC_LINK_IFELSE(
