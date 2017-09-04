@@ -7,23 +7,9 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 
-enum rpc_function_id {
-	[[#functions]]
-	RPC_[[name]],
-	[[/functions]]
-	RPC_FUNCTION_COUNT
-};
-
-[[#functions]]
-struct rpc_[[name]]_params {
-	enum rpc_function_id function_id;
-	[[#params]]
-	[[rpctype]][[name]];
-	[[/params]]
-};
-
-[[/functions]]
+#include "functions.h"
 
 [[#functions]]
 typedef [[ctype]](*rtr_[[name]]_t)([[#params]][[ctype]][[name]][[^last]], [[/last]][[/params]][[#variadic]], ...[[/variadic]]);

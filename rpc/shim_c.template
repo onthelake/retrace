@@ -6,6 +6,7 @@
 #include "shim.h"
 #include "rpc.h"
 #include "backend.h"
+#include "functions.h"
 
 #ifndef __APPLE__
 #include <dlfcn.h>
@@ -28,33 +29,45 @@ int trace_functions[RPC_FUNCTION_COUNT];
 #endif
 {
 	enum rpc_msg_type _msg_type;
-	int _postcall = 0, _fd;
+	int _postcall = 0, _fd, _errno;
 	char _buf[RPC_MSG_LEN_MAX];
-	struct rpc_[[name]]_params _params = {RPC_[[name]][[#params]], [[name]][[/params]]};
+	struct retrace_[[name]]_params _params = {RPC_[[name]][[#params]], [[name]][[/params]]};
 [[#has_parameters]]
-	struct rpc_[[name]]_params *_buf_params = (struct rpc_[[name]]_params *)_buf;
+	struct retrace_[[name]]_params *_buf_params = (struct retrace_[[name]]_params *)_buf;
 [[/has_parameters]]
 [[#variadic]]
 	va_list ap;
 [[/variadic]]
 [[#result]]
+	[[ctype]]*_buf_result = ([[ctype]]*)_buf;
 	[[ctype]]_result;
 [[/result]]
 
+	_errno = errno;
 	_fd = rpc_get_sockfd();
 
-	if (!trace_functions[RPC_[[name]]])
-		_fd = -1;
+	if (_fd == -1 || !trace_functions[RPC_[[name]]]) {
+[[#variadic]]
+		va_start(ap, [[last_param]]);
+		[[#result]]_result = [[/result]][[variadic]]([[#params]][[name]], [[/params]]ap);
+		va_end(ap);
+[[/variadic]]
+[[^variadic]]
+		[[#result]]_result = [[/result]]real_[[name]]([[#params]][[name]][[^last]], [[/last]][[/params]]);
+[[/variadic]]
+		return[[#result]] _result[[/result]];
+	}
 
-	if (!rpc_backend_send(_fd, RPC_MSG_CALL_INIT, &_params, sizeof(_params)))
-		_fd = -1;
+	if (!rpc_send_message(_fd, RPC_MSG_CALL_INIT, &_params, sizeof(_params)))
+		goto rpc_fail;
 
-	while (rpc_backend_recv(_fd, &_msg_type, _buf)) {
+	while (rpc_recv_message(_fd, &_msg_type, _buf)) {
 		if (_msg_type == RPC_MSG_DONE) {
+			errno = _errno;
 			return[[#result]] _result[[/result]];
 [[#result]]
 		} else if (_msg_type == RPC_MSG_SET_RESULT) {
-			_result = *([[ctype]]*)_buf;
+			_result = *_buf_result;
 [[/result]]
 [[#has_parameters]]
 		} else if (_msg_type == RPC_MSG_SET_PARAMETERS) {
@@ -72,11 +85,17 @@ int trace_functions[RPC_FUNCTION_COUNT];
 			[[#result]]_result = [[/result]]real_[[name]]([[#params]][[name]][[^last]], [[/last]][[/params]]);
 [[/variadic]]
 			_postcall = 1;
-			if (!rpc_backend_send(_fd, RPC_MSG_CALL_RESULT, [[#result]]&_result, sizeof(_result)[[/result]][[^result]]NULL, 0[[/result]]))
-				break;
+			_errno = errno;
+			if (!rpc_send_message(_fd, RPC_MSG_CALL_RESULT, [[#result]]&_result, sizeof(_result)[[/result]][[^result]]NULL, 0[[/result]]))
+				goto rpc_fail;
 		} else if (!rpc_handle_message(_fd, _msg_type, _buf))
-			break;
+			goto rpc_fail;
 	}
+
+rpc_fail:
+	real_close(_fd);
+	rpc_set_sockfd(-1);
+
 	if (!_postcall) {
 [[#variadic]]
 		va_start(ap, [[last_param]]);
@@ -87,7 +106,7 @@ int trace_functions[RPC_FUNCTION_COUNT];
 		[[#result]]_result = [[/result]]real_[[name]]([[#params]][[name]][[^last]], [[/last]][[/params]]);
 [[/variadic]]
 	}
-	return [[#result]]_result[[/result]];
+	return[[#result]] _result[[/result]];
 }
 
 #ifdef __APPLE__

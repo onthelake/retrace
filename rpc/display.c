@@ -25,39 +25,91 @@
 
 #include "../config.h"
 
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <errno.h>
+#include <ctype.h>
 
-#include "rpc.h"
+#include "frontend.h"
+#include "display.h"
 
-ssize_t
-rpc_send(int fd, enum rpc_msg_type msg_type, const void *buf, size_t length)
+static char *
+format_char(char *buf, int c)
 {
-	struct iovec iov[] = {
-	    {&msg_type, sizeof(msg_type)}, {(void *)buf, length} };
-	struct msghdr msg = {NULL, 0, iov, 2, NULL, 0, 0};
-	ssize_t result;
+	static const char hex[] = "0123456789ABCDEF";
 
-	do {
-		result = sendmsg(fd, &msg, 0);
-	} while (result == -1 && errno == EINTR);
-
-	return result;
+	if (isprint(c))
+		*(buf++) = c;
+	else {
+		*(buf++) = '\\';
+		switch (c) {
+		case '\0':
+			*(buf++) = '0';
+			break;
+		case '\a':
+			*(buf++) = 'a';
+			break;
+		case '\b':
+			*(buf++) = 'b';
+			break;
+		case '\t':
+			*(buf++) = 't';
+			break;
+		case '\n':
+			*(buf++) = 'n';
+			break;
+		case '\v':
+			*(buf++) = 'v';
+			break;
+		case '\f':
+			*(buf++) = 'f';
+			break;
+		case '\r':
+			*(buf++) = 'r';
+			break;
+		default:
+			*(buf++) = 'x';
+			*(buf++) = hex[c >> 4 & 0xf];
+			*(buf++) = hex[c & 0xf];
+			break;
+		}
+	}
+	return buf;
 }
 
-ssize_t
-rpc_recv(int fd, enum rpc_msg_type *msg_type, void *buf)
+void
+print_string(const char *s)
 {
-	struct iovec iov[] = {
-	    {msg_type, sizeof(*msg_type)}, {(void *)buf, RPC_MSG_LEN_MAX} };
-	struct msghdr msg = {NULL, 0, iov, 2, NULL, 0, 0};
-	ssize_t result;
+	char buf[256], *p = buf, *e = buf + 250;
 
-	do {
-		result = recvmsg(fd, &msg, 0);
-	} while (result == -1 && errno == EINTR);
+	while (*s) {
+		if (p >= e) {
+			*p = '\0';
+			printf(buf);
+			p = buf;
+		}
+		p = format_char(p, *s);
+		s++;
+	}
+	if (p != buf) {
+		*p = '\0';
+		printf(buf);
+	}
+}
 
-	return result;
+void
+display_string(struct retrace_endpoint *ep, const char *s) {
+	struct display_info *di = ep->handle->user_data;
+	char buf[di->expand_strings + 1];
+	int snipped;
+
+	if (s && di->expand_strings) {
+		buf[di->expand_strings] = '\0';
+		retrace_fetch_string(ep->fd, s, buf,
+		    di->expand_strings + 1);
+		snipped = buf[di->expand_strings] != '\0';
+		buf[di->expand_strings] = '\0';
+		printf("\"");
+		print_string(buf);
+		printf(snipped ? "\"+" : "\"");
+	} else {
+		printf("%p", s);
+	}
 }

@@ -1,19 +1,20 @@
 {{=[[ ]]=}}
 #include <stdlib.h>
 #include <string.h>
-#include "shim.h"
 #include "rpc.h"
 #include "frontend.h"
+#include "handlers.h"
+#include "display.h"
 [[#functions]]
 
 int
-default_[[name]]_precall_handler(struct retrace_rpc_endpoint *ep, void *buf, void **context)
+default_[[name]]_precall_handler(struct retrace_endpoint *ep, void *buf, void **context)
 {
 [[#has_parameters]]
-	struct rpc_[[name]]_params *params;
+	struct retrace_[[name]]_params *params;
 
-	params = malloc(sizeof(struct rpc_[[name]]_params));
-	*params = *(struct rpc_[[name]]_params *)buf;
+	params = malloc(sizeof(struct retrace_[[name]]_params));
+	*params = *(struct retrace_[[name]]_params *)buf;
 	*context = params;
 [[/has_parameters]]
 
@@ -21,12 +22,12 @@ default_[[name]]_precall_handler(struct retrace_rpc_endpoint *ep, void *buf, voi
 }
 
 int
-default_[[name]]_postcall_handler(struct retrace_rpc_endpoint *ep, void *buf, void *context)
+default_[[name]]_postcall_handler(struct retrace_endpoint *ep, void *buf, void *context)
 {
-	struct backtrace_info *backtrace_info = ep->handle->user_data;
+	struct display_info *display_info = ep->handle->user_data;
 	char btbuffer[4096];
 [[#has_parameters]]
-	struct rpc_[[name]]_params *params = (struct rpc_[[name]]_params *)context;
+	struct retrace_[[name]]_params *params = (struct retrace_[[name]]_params *)context;
 [[/has_parameters]]
 [[#result]]
 	[[rpctype]]result = *([[rpctype]]*)buf;
@@ -34,7 +35,7 @@ default_[[name]]_postcall_handler(struct retrace_rpc_endpoint *ep, void *buf, vo
 
 	printf("(%d:%d %d)%.*s[[name]](", ep->pid, ep->thread_num, ep->call_num, ep->call_depth, "\t\t\t\t\t");
 [[#params]]
-	TRACE_[[type]](ep, params->[[name]]);
+	DISPLAY_[[type]](ep, params->[[name]]);
 [[^last]]
 	printf(", ");
 [[/last]]
@@ -42,12 +43,12 @@ default_[[name]]_postcall_handler(struct retrace_rpc_endpoint *ep, void *buf, vo
 	printf(")");
 [[#result]]
 	printf(" = ");
-	TRACE_[[type]](ep, result);
+	DISPLAY_[[type]](ep, result);
 [[/result]]
 	printf("\n");
 
-	if (backtrace_info->flags[RPC_[[name]]]) {
-		if (retrace_backtrace(ep->fd, backtrace_info->depth, btbuffer, sizeof(btbuffer)))
+	if (display_info->backtrace_functions[RPC_[[name]]]) {
+		if (retrace_fetch_backtrace(ep->fd, display_info->backtrace_depth, btbuffer, sizeof(btbuffer)))
 			printf(btbuffer);
 	}
 
@@ -63,12 +64,3 @@ void get_handlers(retrace_precall_handler_t *pre, retrace_postcall_handler_t *po
 	post[RPC_[[name]]] = default_[[name]]_postcall_handler;
 	[[/functions]]
 };
-
-enum rpc_function_id
-function_name_to_id(const char *name) {
-	[[#functions]]
-	if (!strcmp(name, "[[name]]"))
-		return RPC_[[name]];
-	[[/functions]]
-	return -1;
-}

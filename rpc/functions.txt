@@ -150,3 +150,25 @@ parameter stream file
 
 function close int
 parameter fd fd
+
+function socketpair int
+parameter domain int
+parameter type int
+parameter protocol int
+parameter sv pint
+
+function send ssize_t
+parameter sockfd int
+parameter buf pcvoid
+parameter len size_t
+parameter flags int
+
+function sendmsg ssize_t
+parameter sockfd int
+parameter msg cmsghdr
+parameter flags int
+
+function recvmsg ssize_t
+parameter sockfd int
+parameter msg msghdr
+parameter flags int

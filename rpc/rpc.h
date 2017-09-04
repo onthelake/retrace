@@ -7,7 +7,7 @@
 
 #define RPC_MSG_LEN_MAX 256
 
-extern const char *rpc_version;
+extern const char *retrace_version;
 
 enum rpc_msg_type {
 	RPC_MSG_CALL_INIT,
@@ -15,8 +15,10 @@ enum rpc_msg_type {
 	RPC_MSG_DO_CALL,
 	RPC_MSG_CALL_RESULT,
 	RPC_MSG_SET_RESULT,
+	RPC_MSG_SET_ERRNO,
 	RPC_MSG_SET_PARAMETERS,
 	RPC_MSG_GET_STRING,
+	RPC_MSG_GET_MEMORY,
 	RPC_MSG_BACKTRACE
 };
 
@@ -25,7 +27,21 @@ struct rpc_control_header {
 	pthread_t tid;
 };
 
-ssize_t rpc_send(int fd, enum rpc_msg_type msg_type, const void *buf, size_t len);
-ssize_t rpc_recv(int fd, enum rpc_msg_type *msg_type, void *buf);
+struct rpc_string_params {
+	char *address;
+	size_t length;
+};
 
+struct rpc_memory_params {
+	char *address;
+	size_t length;
+};
+
+struct rpc_backtrace_params {
+	int depth;
+};
+
+struct rpc_errno_params {
+	int e;
+};
 #endif

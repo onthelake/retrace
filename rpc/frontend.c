@@ -39,13 +39,13 @@
 #include "rpc.h"
 #include "frontend.h"
 
-#define IOBUFLEN 64 * 1024
+#define IOBUFLEN (64 * 1024)
 
-static struct retrace_rpc_endpoint *
+static struct retrace_endpoint *
 recv_endpoint(int fd)
 {
 	char version[32];
-	struct retrace_rpc_endpoint *endpoint;
+	struct retrace_endpoint *endpoint;
 	struct rpc_control_header header;
 	struct iovec iov[2] = {
 		{&header, sizeof(header)},
@@ -72,24 +72,24 @@ recv_endpoint(int fd)
 	/*
 	 * check version sent with new fd
 	 */
-	if (memcmp(version, rpc_version, 32) != 0)
+	if (memcmp(version, retrace_version, 32) != 0)
 		error(1, 0, "Version mismatch");
 
 	cmsg = CMSG_FIRSTHDR(&msg);
 
-	endpoint = malloc(sizeof(struct retrace_rpc_endpoint));
-	endpoint->fd = *(int *)CMSG_DATA(cmsg);
+	endpoint = malloc(sizeof(struct retrace_endpoint));
+	memcpy(&endpoint->fd, CMSG_DATA(cmsg), sizeof(int));
 	endpoint->pid = header.pid;
 	SLIST_INIT(&endpoint->call_stack);
 
 	return endpoint;
 }
 
-struct retrace_rpc_endpoint *
+struct retrace_endpoint *
 add_endpoint(struct retrace_handle *handle)
 {
 	struct retrace_process_info *pi, *procinfo = NULL;
-	struct retrace_rpc_endpoint *endpoint;
+	struct retrace_endpoint *endpoint;
 
 	endpoint = recv_endpoint(handle->control_fd);
 	if (!endpoint)
@@ -186,7 +186,7 @@ retrace_set_user_data(struct retrace_handle *handle, void *data)
 void
 retrace_close(struct retrace_handle *handle)
 {
-	struct retrace_rpc_endpoint *endpoint;
+	struct retrace_endpoint *endpoint;
 	struct retrace_process_info *procinfo;
 
 	close(handle->control_fd);
@@ -209,29 +209,41 @@ retrace_close(struct retrace_handle *handle)
 	free(handle);
 }
 
+int
+rpc_send(int fd, const void *buf, size_t len)
+{
+	ssize_t result;
+
+	do {
+		result = send(fd, buf, len, 0);
+	} while (result == -1 && errno == EINTR);
+
+	return (result != -1 ? 1 : 0);
+}
+
 static void
-handle_precall(struct retrace_rpc_endpoint *ep, void *buf)
+handle_precall(struct retrace_endpoint *ep, void *buf)
 {
 	struct rpc_call_context *ctx;
 	void *context = NULL;
-	enum rpc_function_id function_id;
+	enum retrace_function_id function_id;
 
 	++ep->call_depth;
-	function_id = *(enum rpc_function_id *)buf;
+	function_id = *(enum retrace_function_id *)buf;
 	if (ep->handle->precall_handlers[function_id](ep, buf, &context)) {
 		ctx = malloc(sizeof(struct rpc_call_context));
 		ctx->function_id = function_id;
 		ctx->context = context;
 		SLIST_INSERT_HEAD(&ep->call_stack, ctx, next);
-		rpc_send(ep->fd, RPC_MSG_DO_CALL, NULL, 0);
+		rpc_send_message(ep->fd, RPC_MSG_DO_CALL, NULL, 0);
 	} else {
-		rpc_send(ep->fd, RPC_MSG_DONE, NULL, 0);
+		rpc_send_message(ep->fd, RPC_MSG_DONE, NULL, 0);
 		--ep->call_depth;
 	}
 }
 
 static void
-handle_postcall(struct retrace_rpc_endpoint *ep, void *buf)
+handle_postcall(struct retrace_endpoint *ep, void *buf)
 {
 	struct rpc_call_context *ctx;
 
@@ -241,26 +253,8 @@ handle_postcall(struct retrace_rpc_endpoint *ep, void *buf)
 	++ep->call_num;
 	ep->handle->postcall_handlers[ctx->function_id](ep, buf, ctx->context);
 
-	rpc_send(ep->fd, RPC_MSG_DONE, NULL, 0);
+	rpc_send_message(ep->fd, RPC_MSG_DONE, NULL, 0);
 	--ep->call_depth;
-}
-
-static int
-recv_string(int fd, char *buf, size_t len)
-{
-	off_t offset = 0;
-	ssize_t n;
-
-	while (offset < len) {
-		n = recv(fd, buf + offset, len - offset, 0);
-		if (n <= 0)
-			break;
-		offset += n;
-		if (buf[offset - 1] == '\0')
-			return offset;
-	}
-
-	return -1;
 }
 
 void
@@ -269,7 +263,7 @@ retrace_trace(struct retrace_handle *handle)
 	enum rpc_msg_type msg_type;
 	char buf[RPC_MSG_LEN_MAX];
 	fd_set readfds;
-	struct retrace_rpc_endpoint *endpoint;
+	struct retrace_endpoint *endpoint;
 	int numfds;
 
 	for (;;) {
@@ -295,9 +289,9 @@ retrace_trace(struct retrace_handle *handle)
 			if (!FD_ISSET(endpoint->fd, &readfds))
 				continue;
 
-			if (!rpc_recv(endpoint->fd, &msg_type, buf)) {
+			if (!rpc_recv_message(endpoint->fd, &msg_type, buf)) {
 				SLIST_REMOVE(&handle->endpoints, endpoint,
-				    retrace_rpc_endpoint, next);
+				    retrace_endpoint, next);
 				close(endpoint->fd);
 				free(endpoint);
 				break;
@@ -314,40 +308,132 @@ retrace_trace(struct retrace_handle *handle)
 }
 
 int
-retrace_backtrace(int fd, int depth, char *buffer, size_t len)
+rpc_send_message(int fd, enum rpc_msg_type msg_type, const void *buf, size_t length)
 {
-	rpc_send(fd, RPC_MSG_BACKTRACE, &depth, sizeof(depth));
+	struct iovec iov[] = {
+	    {&msg_type, sizeof(msg_type)}, {(void *)buf, length} };
+	struct msghdr msg = {NULL, 0, iov, 2, NULL, 0, 0};
+	ssize_t result;
 
-	if (recv_string(fd, buffer, len))
+	do {
+		result = sendmsg(fd, &msg, 0);
+	} while (result == -1 && errno == EINTR);
+
+	return (result != -1 ? 1 : 0);
+}
+
+int
+rpc_recv_message(int fd, enum rpc_msg_type *msg_type, void *buf)
+{
+	struct iovec iov[] = {
+	    {msg_type, sizeof(*msg_type)}, {(void *)buf, RPC_MSG_LEN_MAX} };
+	struct msghdr msg = {NULL, 0, iov, 2, NULL, 0, 0};
+	ssize_t result;
+
+	do {
+		result = recvmsg(fd, &msg, 0);
+	} while (result == -1 && errno == EINTR);
+
+	return (result > 0 ? 1 : 0);
+}
+
+int
+rpc_recv(int fd, void *buf, size_t len)
+{
+	ssize_t n;
+	size_t count = 0;
+
+	while (count < len) {
+		n = recv(fd, buf + count, len - count, 0);
+		if (n == -1) {
+			if (errno == EINTR)
+				continue;
+			return 0;
+		}
+		count += n;
+	}
+
+	return 1;
+}
+
+int
+rpc_recv_string(int fd, char *buf, size_t len)
+{
+	ssize_t n;
+	size_t count = 0;
+
+	while (count < len) {
+		n = recv(fd, buf + count, len - count, 0);
+		if (n == -1) {
+			if (errno == EINTR)
+				continue;
+			return 0;
+		}
+		count += n;
+		if (buf[count - 1] == '\0')
+			break;
+	}
+	return 1;
+}
+
+static void
+discard_string(int fd) {
+	static const size_t len = 256;
+	char buf[len];
+
+	while (1) {
+		buf[len - 1] = '\0';
+		if (!rpc_recv_string(fd, buf, len)
+		    || buf[len - 1] == '\0')
+			return;
+	}
+}
+
+int
+retrace_fetch_backtrace(int fd, int depth, char *buffer, size_t len)
+{
+	struct rpc_backtrace_params bp = {depth};
+	int result;
+
+	rpc_send_message(fd, RPC_MSG_BACKTRACE, &bp, sizeof(bp));
+
+	buffer[len - 1] = '\0';
+	result = rpc_recv_string(fd, buffer, len);
+	if (result && buffer[len - 1] != '\0') {
+		discard_string(fd);
+		buffer[len - 1] = '\0';
+	}
+	return result;
+}
+
+int
+retrace_fetch_string(int fd, const char *address, char *buffer, size_t len)
+{
+	struct rpc_string_params sp = {(char *)address, len};
+
+	rpc_send_message(fd, RPC_MSG_GET_STRING, &sp, sizeof(sp));
+
+	return (rpc_recv_string(fd, buffer, len));
+}
+
+int
+retrace_fetch_memory(int fd, unsigned long int address, void *buffer,
+	size_t len)
+{
+	struct rpc_memory_params mp = {(char *)address, len};
+
+	rpc_send_message(fd, RPC_MSG_GET_MEMORY, &mp, sizeof(mp));
+
+	if (rpc_recv(fd, buffer, len) != -1)
 		return 1;
 
 	return 0;
 }
 
-void
-trace_string(int fd, const char *s)
+int
+retrace_inject_errno(int fd, int e)
 {
-	char buf[RPC_MSG_LEN_MAX];
+	struct rpc_errno_params ep = {e};
 
-	if (s == NULL) {
-		printf("%p", s);
-		return;
-	}
-
-	rpc_send(fd, RPC_MSG_GET_STRING, &s, sizeof(s));
-
-	if (recv_string(fd, buf, RPC_MSG_LEN_MAX))
-		printf("\"%s\"", buf);
-}
-
-void *
-trace_buffer(void *buffer, size_t length)
-{
-	char *p = buffer;
-	int i;
-
-	for (i = 0; i < length; i++, p++)
-		printf("%c", isprint(*p) ? *p : '.');
-
-	return (buffer + length);
+	return (rpc_send_message(fd, RPC_MSG_SET_ERRNO, &ep, sizeof(ep)));
 }

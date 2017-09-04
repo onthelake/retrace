@@ -38,12 +38,14 @@ struct type {
 	const char *rpctype;
 } types[] = {
 	{"char",	"int ",			NULL		},
+	{"cmsghdr",	"const struct msghdr *",	NULL	},
 	{"cstring",	"const char *",		NULL		},
 	{"dir",		"DIR *",		NULL		},
 	{"dirent",	"struct dirent *",	NULL		},
 	{"fd",		"int ",			NULL		},
 	{"file",	"FILE *",		NULL		},
 	{"int",		"int ",			NULL		},
+	{"msghdr",	"struct msghdr *",	NULL		},
 	{"pcvoid",	"const void *",		NULL		},
 	{"pdirent",	"struct dirent **",	NULL		},
 	{"pid_t",	"pid_t ",		NULL		},

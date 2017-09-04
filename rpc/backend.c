@@ -115,7 +115,7 @@ new_rpc_endpoint()
 	struct rpc_control_header control_header;
 	struct iovec iov[] = {
 	    {&control_header, sizeof(control_header)},
-	    {(char *)rpc_version, 32 } };
+	    {(char *)retrace_version, 32 } };
 	struct msghdr msg = { 0 };
 	struct cmsghdr *cmsg;
 	union {
@@ -133,13 +133,13 @@ new_rpc_endpoint()
 	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
 	pfd = (int *)CMSG_DATA(cmsg);
 
-	socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv);
+	real_socketpair(AF_UNIX, SOCK_SEQPACKET, 0, sv);
 	*pfd = sv[0];
 
 	control_header.pid = real_getpid();
 	control_header.tid = pthread_self();
 
-	sendmsg(g_sockfd, &msg, 0);
+	real_sendmsg(g_sockfd, &msg, 0);
 
 	real_close(sv[0]);
 	return (sv[1]);
@@ -174,21 +174,52 @@ rpc_set_sockfd(long int fd)
 	pthread_setspecific(g_fdkey, (void *)fd);
 }
 
-static int
-send_string(int fd, const char *s, void *buf)
+int
+rpc_send_message(int fd, enum rpc_msg_type msg_type, const void *buf, size_t length)
 {
-	int i;
+	struct iovec iov[] = {
+	    {&msg_type, sizeof(msg_type)}, {(void *)buf, length} };
+	struct msghdr msg = {NULL, 0, iov, 2, NULL, 0, 0};
+	ssize_t result;
 
-	for (i = 0; i < RPC_MSG_LEN_MAX && s[i] != '\0'; ++i)
-		((char *)buf)[i] = s[i];
+	do {
+		result = real_sendmsg(fd, &msg, 0);
+	} while (result == -1 && errno == EINTR);
 
-	if (i < RPC_MSG_LEN_MAX)
-		((char *)buf)[i++] = '\0';
+	return (result != -1 ? 1 : 0);
+}
 
-	if (send(fd, buf, i, 0) != i)
-		return 0;
+int
+rpc_recv_message(int fd, enum rpc_msg_type *msg_type, void *buf)
+{
+	struct iovec iov[] = {
+	    {msg_type, sizeof(*msg_type)}, {(void *)buf, RPC_MSG_LEN_MAX} };
+	struct msghdr msg = {NULL, 0, iov, 2, NULL, 0, 0};
+	ssize_t result;
 
-	return 1;
+	do {
+		result = real_recvmsg(fd, &msg, 0);
+	} while (result == -1 && errno == EINTR);
+
+	return (result != -1 ? 1 : 0);
+}
+
+static int
+send_string(int fd, const char *s, size_t len)
+{
+	size_t n;
+	ssize_t result;
+
+	n = real_strlen(s) + 1;
+
+	if (n > len)
+		n = len;
+
+	do {
+		result = real_send(fd, s, n, 0);
+	} while (result == -1 && errno == EINTR);
+
+	return (result != -1 ? 1 : 0);
 }
 
 static int
@@ -196,30 +227,31 @@ send_backtrace(int fd, int depth)
 {
 	void *addresses[depth + 3];
 	int frames;
-	char zero = '\0';
 
 	rpc_set_sockfd(-1);
 	frames = backtrace(addresses, depth + 3);
 	backtrace_symbols_fd(addresses + 3, frames - 3, fd);
-	send(fd, &zero, 1, 0);
 	rpc_set_sockfd(fd);
 
-	return 1;
+	return send_string(fd, "", 1);
 }
 
 int
 rpc_handle_message(int fd, enum rpc_msg_type msg_type, void *buf)
 {
+	struct rpc_backtrace_params *btp = buf;
+	struct rpc_string_params *sp = buf;
+
 	if (fd == -1)
 		return 0;
 
 	switch (msg_type) {
 	case RPC_MSG_GET_STRING:
-		if (!send_string(fd, *(char **)buf, buf))
+		if (!send_string(fd, (char *)sp->address, sp->length))
 			return 0;
 		break;
 	case RPC_MSG_BACKTRACE:
-		if (!send_backtrace(fd, *(int *)buf))
+		if (!send_backtrace(fd, btp->depth))
 			return 0;
 		break;
 	default:
@@ -227,40 +259,4 @@ rpc_handle_message(int fd, enum rpc_msg_type msg_type, void *buf)
 		break;
 	}
 	return 1;
-}
-
-int
-rpc_backend_recv(int fd, enum rpc_msg_type *msg_type, void *buf)
-{
-	ssize_t c;
-
-	if (fd == -1)
-		return 0;
-
-	c = rpc_recv(fd, msg_type, buf);
-	if (c == 0)
-		real_close(fd);
-
-	if (c <= 0)
-		rpc_set_sockfd(-1);
-
-	return (c > 0);
-}
-
-int
-rpc_backend_send(int fd, enum rpc_msg_type msg_type, const void *buf, size_t len)
-{
-	ssize_t c;
-
-	if (fd == -1)
-		return 0;
-
-	c = rpc_send(fd, msg_type, buf, len);
-	if (c == 0)
-		real_close(fd);
-
-	if (c <= 0)
-		rpc_set_sockfd(-1);
-
-	return (c > 0);
 }
